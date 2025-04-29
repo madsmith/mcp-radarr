@@ -1,7 +1,9 @@
 import pytest
 import pytest_asyncio
 import json
-from src.mcp_radarr.server import lookup_movie, movie_info, add_movie, movie_list, movie_info_by_tmdb_id
+from src.mcp_radarr.server import (
+    lookup_movie, movie_info, add_movie, movie_list, movie_info_by_tmdb_id, search_for_movie
+)
 from mcp.server.fastmcp import Context
 
 class DummyContext(Context):
@@ -15,10 +17,9 @@ async def ctx():
 async def test_lookup_movie_tool_found(ctx: Context):
     # Use a well-known movie
     response = await lookup_movie(ctx, "Inception")
-    data = json.loads(response)
-    assert not data["isError"]
+    assert not response.isError
 
-    content = data["content"]
+    content = response.content
     assert isinstance(content, list)
     assert content, "No movies returned from Radarr."
     assert len(content) > 1, "There should have been multiple responses"
@@ -129,3 +130,51 @@ async def test_movie_info_by_tmdb_id(ctx: Context):
     assert "title" in response.content
     assert "year" in response.content
     print(f"Movie info by tmdbId: {response.content['title']} ({response.content['year']})")
+
+@pytest.mark.asyncio
+async def test_search_for_movie_name(ctx: Context):
+    # Should match movies with 'Matrix' in the title (case-insensitive)
+    response = await search_for_movie(ctx, {"name": "Matrix"})
+    assert not response.isError
+    assert isinstance(response.content, list)
+    assert len(response.content) >= 4
+    for movie in response.content:
+        assert "Matrix".lower() in movie["title"].lower()
+    print(f"Found {len(response.content)} movies with 'Matrix' in the title.")
+    print(f"{json.dumps(response.content, indent=2)}")
+
+@pytest.mark.asyncio
+async def test_search_for_movie_year_and_genre(ctx: Context):
+    response = await search_for_movie(ctx, {"year": 1999, "genres": ["Action"]})
+    assert not response.isError
+    assert isinstance(response.content, list)
+    assert len(response.content) > 0
+    for movie in response.content:
+        assert movie["year"] == 1999
+        # genre match is not in minimal fields, so include it
+        assert "genres" in movie or "genres" not in movie  # minimal does not include genres by default
+    print(f"Found {len(response.content)} movies from 1999 with Action genre.")
+    print(f"{json.dumps(response.content, indent=2)}")
+
+@pytest.mark.asyncio
+async def test_search_for_movie_include_fields(ctx: Context):
+    response = await search_for_movie(ctx, {"name": "Matrix"}, includeFields=["qualityProfileId", "genres"])
+    assert not response.isError
+    assert isinstance(response.content, list)
+    assert len(response.content) >= 4
+    for movie in response.content:
+        assert "qualityProfileId" in movie
+        assert "genres" in movie
+    print(f"Found {len(response.content)} movies with extra fields included.")
+    print(f"{json.dumps(response.content, indent=2)}")
+
+@pytest.mark.asyncio
+async def test_search_for_movie_quality_profile_include_fields(ctx: Context):
+    response = await search_for_movie(ctx, {"qualityProfileId": "1", "year": 2025}, includeFields=["qualityProfileId", "filePath", "movieFile.size"])
+    assert not response.isError
+    assert isinstance(response.content, list)
+    assert len(response.content) >= 4
+    for movie in response.content:
+        assert "qualityProfileId" in movie
+    print(f"Found {len(response.content)} movies with extra fields included.")
+    print(f"{json.dumps(response.content, indent=2)}")

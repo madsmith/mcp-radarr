@@ -117,8 +117,10 @@ def filter_movie(movie):
 
     return filtered_movie
 
-def filter_movie_minimal(movie):
+def filter_movie_minimal(movie, includeFields=None):
     keys = ["id", "title", "year", "tmdbId"]
+    if includeFields:
+        keys = list(dict.fromkeys(keys + list(includeFields)))  # merge and deduplicate
     return filter_keys(movie, keys)
 
 def radarr_status(movie: dict) -> dict:
@@ -317,6 +319,82 @@ async def edit_movie(ctx: Context, edits: dict) -> ToolResponse:
         return ToolResponse(isError=True, content={"error": str(e), "details": getattr(e, 'errors', None)})
     except Exception as e:
         return ToolResponse(isError=True, content={"error": str(e)})
+
+@mcp.tool()
+async def search_for_movie(ctx: Context, criteria: dict, includeFields: list = None) -> ToolResponse:
+    """
+    Search for movies matching given criteria.
+    Supported criteria keys:
+      - name: str (partial match, case-insensitive)
+      - qualityProfileId: int
+      - genres: list of str (any genre matches)
+      - certification: str [G, PG, PG-13, R, NC-17, etc.]
+      - year: int or dict with gt, lt, eq operators (e.g., {"gt": 2000, "lt": 2010})
+      - monitored: bool
+      - status: str [announced, released, inCinemas]
+      - movieFile.size: {"gt": int, "lt": int} (bytes)
+    Optionally, includeFields: list of additional field names to include in results.
+    Example:
+      {"name": "Matrix", "year": 1999, "genres": ["Action"]}, includeFields=["qualityProfileId", "genres"]
+    """
+    movies = await radarr_request("movie")
+    results = []
+    for m in movies:
+        match = True
+        # Name (partial, case-insensitive)
+        if "name" in criteria:
+            if criteria["name"].lower() not in m.get("title", "").lower():
+                match = False
+        # qualityProfileId
+        if match and "qualityProfileId" in criteria:
+            if int(m.get("qualityProfileId")) != int(criteria["qualityProfileId"]):
+                match = False
+        # genres (any match)
+        if match and "genres" in criteria:
+            movie_genres = set([g.lower() for g in m.get("genres", [])])
+            search_genres = set([g.lower() for g in criteria["genres"]])
+            if not movie_genres.intersection(search_genres):
+                match = False
+        # certification
+        if match and "certification" in criteria:
+            if m.get("certification", "").lower() != criteria["certification"].lower():
+                match = False
+        # year (int or dict with gt, lt, eq)
+        if match and "year" in criteria:
+            movie_year = m.get("year")
+            year_crit = criteria["year"]
+            if isinstance(year_crit, dict):
+                if "eq" in year_crit and movie_year != year_crit["eq"]:
+                    match = False
+                if "gt" in year_crit and (movie_year is None or movie_year <= year_crit["gt"]):
+                    match = False
+                if "lt" in year_crit and (movie_year is None or movie_year >= year_crit["lt"]):
+                    match = False
+            else:
+                if movie_year != year_crit:
+                    match = False
+        # monitored
+        if match and "monitored" in criteria:
+            if m.get("monitored") != criteria["monitored"]:
+                match = False
+        # status
+        if match and "status" in criteria:
+            if m.get("status", "").lower() != criteria["status"].lower():
+                match = False
+        # movieFile.size
+        if match and "movieFile.size" in criteria:
+            size_criteria = criteria["movieFile.size"]
+            size = m.get("movieFile", {}).get("size")
+            if size is not None:
+                if "gt" in size_criteria and size <= size_criteria["gt"]:
+                    match = False
+                if "lt" in size_criteria and size >= size_criteria["lt"]:
+                    match = False
+            else:
+                match = False
+        if match:
+            results.append(filter_movie_minimal(m, includeFields=includeFields))
+    return ToolResponse(isError=False, content=results)
 
 def main():
     import argparse
