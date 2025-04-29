@@ -1,0 +1,5 @@
+# MCP Radarr configuration file
+# You can override these values as needed
+radarr:
+  url: "http://localhost:7878"
+  api_key: "changeme"
