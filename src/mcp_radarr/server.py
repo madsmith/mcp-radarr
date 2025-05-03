@@ -399,7 +399,7 @@ async def search_for_movie(ctx: Context, criteria: dict, includeFields: list = N
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="MCP server for Radarr integration")
-    parser.add_argument("--server", action="store_true", help="Run in SSE server mode (default: stdio mode)")
+    parser.add_argument("-s", "--server", action="store_true", help="Run in SSE server mode (default: stdio mode)")
     parser.add_argument("-p", "--port", type=int, default=8050, help="Port to run the server on (default: 8050)")
     parser.add_argument("-H", "--host", default="0.0.0.0", help="Host to run the server on (default: 0.0.0.0)")
     args = parser.parse_args()
