@@ -1,11 +1,15 @@
-import os
+import argparse
 import asyncio
 import json
-from typing import Optional
+from typing import Any, Optional
+import os
+from pydantic import BaseModel
 import aiohttp
 from mcp.server.fastmcp import FastMCP, Context
 from omegaconf import OmegaConf
 from pathlib import Path
+
+from .filters import filter_keys, filter_movie, filter_movie_minimal
 
 class RadarrError(RuntimeError):
     def __init__(self, errors: dict, status: int):
@@ -22,7 +26,6 @@ def load_config():
 
 config = load_config()
 
-
 def get_radarr_url() -> str:
     url = OmegaConf.select(config, "radarr.url")
     if not url:
@@ -34,9 +37,6 @@ def get_radarr_api_key() -> str:
     if not key or key == "changeme":
         raise RuntimeError("Radarr API key not set in config")
     return key
-
-from typing import Any, Optional
-from pydantic import BaseModel
 
 class ToolResponse(BaseModel):
     isError: Optional[bool] = None
@@ -56,80 +56,6 @@ async def radarr_request(endpoint: str, method: str = "GET", params=None, data=N
                 result = await resp.json()
                 raise RadarrError(result, resp.status)
             return await resp.json()
-
-def filter_keys(data, keys):
-    """
-    Filter a dict (or list of dicts) to only include the specified keys.
-    For nested keys, use dot notation (e.g., 'images.coverType').
-    Supports '*' as a wildcard for all keys at a level (e.g., 'ratings.*.value').
-    If a key points to a dict, the entire dict is included unless subkeys are specified via dot notation.
-    """
-    if isinstance(data, list):
-        return [filter_keys(item, keys) for item in data if isinstance(item, dict)]
-    result = {}
-    top_level = set()
-    nested = {}
-    for k in keys:
-        if '.' in k:
-            first, rest = k.split('.', 1)
-            nested.setdefault(first, []).append(rest)
-        else:
-            top_level.add(k)
-    for k in top_level:
-        if k == '*':
-            for all_key in data:
-                result[all_key] = data[all_key]
-        elif k in data:
-            result[k] = data[k]
-    for k, subkeys in nested.items():
-        if k == '*':
-            for all_key in data:
-                if isinstance(data[all_key], dict):
-                    result[all_key] = filter_keys(data[all_key], subkeys)
-                elif isinstance(data[all_key], list):
-                    result[all_key] = [filter_keys(item, subkeys) for item in data[all_key] if isinstance(item, dict)]
-        elif k in data:
-            if isinstance(data[k], dict):
-                result[k] = filter_keys(data[k], subkeys)
-            elif isinstance(data[k], list):
-                result[k] = [filter_keys(item, subkeys) for item in data[k] if isinstance(item, dict)]
-    return result
-
-def filter_movie(movie):
-    keys = [
-        "id", "title", "originalTitle", "year", "status", "overview", "inCinemas", "studio", "runtime", "genres",
-        "imdbId", "tmdbId", "certification", "hasFile", "path", "monitored", 'qualityProfileId',
-        # Ratings (wildcard)
-        "ratings.*.value", "ratings.*.votes",
-        # Images
-        "images.coverType", "images.remoteUrl",
-        # movieFile details
-        "movieFile.size", "movieFile.quality.name", "movieFile.languages", 
-        "movieFile.mediaInfo.audioChannels", "movieFile.mediaInfo.audioCodec",
-        "movieFile.mediaInfo.videoDynamicRange", "movieFile.mediaInfo.subtitles",
-        # Popularity for sorting
-        "popularity"
-    ]
-    filtered_movie = filter_keys(movie, keys)
-
-    # Add custom radarr_status
-    filtered_movie["radarr_status"] = radarr_status(movie)
-
-    return filtered_movie
-
-def filter_movie_minimal(movie, includeFields=None):
-    keys = ["id", "title", "year", "tmdbId"]
-    if includeFields:
-        keys = list(dict.fromkeys(keys + list(includeFields)))  # merge and deduplicate
-    return filter_keys(movie, keys)
-
-def radarr_status(movie: dict) -> dict:
-    status = {
-        'tracked': 'id' in movie,
-        'monitored': movie.get('monitored', False),
-        'downloaded': 'movieFile' in movie
-    }
-    return status
 
 @mcp.tool()
 async def lookup_movie(ctx: Context, query: str) -> ToolResponse:
@@ -397,7 +323,6 @@ async def search_for_movie(ctx: Context, criteria: dict, includeFields: list = N
     return ToolResponse(isError=False, content=results)
 
 def main():
-    import argparse
     parser = argparse.ArgumentParser(description="MCP server for Radarr integration")
     parser.add_argument("-s", "--server", action="store_true", help="Run in SSE server mode (default: stdio mode)")
     parser.add_argument("-p", "--port", type=int, default=8050, help="Port to run the server on (default: 8050)")
