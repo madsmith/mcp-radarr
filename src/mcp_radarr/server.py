@@ -8,7 +8,7 @@ import aiohttp
 from fastmcp import FastMCP, Context
 import importlib.metadata
 
-from .filters import filter_keys, filter_movie, filter_movie_minimal
+from .filters import filter_movie, filter_movie_minimal
 from .types import RadarrError, MovieDetailsFull, MovieDetails, MovieMinimal, QualityProfile
 from .config import RadarrConfig
 
@@ -101,7 +101,7 @@ class RadarrMCPTools:
 
         return [filter_movie_minimal(m) for m in movies]
 
-    async def movie_info(self, title: str) -> Optional[MovieDetailsFull]:
+    async def movie_info(self, title: str) -> Optional[MovieDetails]:
         """
         Retrieves detailed information about a specific movie in your Radarr library by exact title.
 
@@ -124,23 +124,14 @@ class RadarrMCPTools:
         Example use case: When a user wants detailed information about a specific movie they know is in their library
         """
         movies = await self.api.request("movie")
+
+        # sort results by shortest title
+        movies.sort(key=lambda x: len(x.get("title", "")))
+        
         for movie in movies:
             if movie.get("title", "").lower() == title.lower():
-                keys = [
-                    "title", "originalTitle", "year", "status", "overview", "inCinemas", "studio", "runtime", "genres",
-                    "imdbId", "tmdbId", "certification", "hasFile", "path", "monitored", "qualityProfileId",
-                    # Ratings (wildcard)
-                    "ratings.*.value", "ratings.*.votes",
-                    # Images
-                    "images.coverType", "images.remoteUrl",
-                    # movieFile details
-                    "movieFile.size", "movieFile.quality.name", "movieFile.languages", 
-                    "movieFile.mediaInfo.audioChannels", "movieFile.mediaInfo.audioCodec",
-                    "movieFile.mediaInfo.videoDynamicRange", "movieFile.mediaInfo.subtitles"
-                ]
-
-                filtered = filter_keys(movie, keys)
-                return MovieDetailsFull.model_validate(filtered)
+                filtered = filter_movie(movie, self.api)
+                return MovieDetails.model_validate(filtered)
         
         return None
 
