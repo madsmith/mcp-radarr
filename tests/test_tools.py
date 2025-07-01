@@ -6,18 +6,12 @@ from mcp_radarr.types import RadarrStatus
 from mcp_radarr.server import RadarrMCPTools
 from mcp_radarr.types import MovieDetailsFull, MovieDetails,MovieMinimal, RadarrStatus
 from mcp_radarr.server import RadarrAPI
-from mcp_radarr.config import load_config
+from mcp_radarr.config import RadarrConfig
 
 @pytest.fixture()
 def api():
-    config = load_config()
-    url: str = OmegaConf.select(config, "radarr.url")
-    assert url, "Radarr URL not set in config"
-    assert url.startswith("http"), "Radarr URL must start with http or https"
-    key: str = OmegaConf.select(config, "radarr.api_key")
-    assert key, "Radarr API key not set in config"
-    assert len(key) > 0, "Radarr API key must be set in config"
-    return RadarrAPI(url, key)
+    config = RadarrConfig()
+    return RadarrAPI(config.url, config.api_key)
 
 @pytest_asyncio.fixture
 async def tools(api):

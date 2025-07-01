@@ -1,20 +1,12 @@
 import json
-from omegaconf import OmegaConf
 import pytest
 from mcp_radarr.server import RadarrAPI, filter_movie
-from mcp_radarr.config import load_config
+from mcp_radarr.config import RadarrConfig
 
 @pytest.fixture()
 def api():
-    config = load_config()
-    url = OmegaConf.select(config, "radarr.url")
-    assert isinstance(url, str)
-    assert url, "Radarr URL not set in config"
-    assert url.startswith("http"), "Radarr URL must start with http or https"
-    key = OmegaConf.select(config, "radarr.api_key")
-    assert key, "Radarr API key not set in config"
-    assert len(key) > 0, "Radarr API key must be set in config"
-    return RadarrAPI(url, key)
+    config = RadarrConfig()
+    return RadarrAPI(config.url, config.api_key)
 
 @pytest.mark.asyncio
 async def test_quality_profiles(api: RadarrAPI):

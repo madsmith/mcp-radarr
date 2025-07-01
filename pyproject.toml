@@ -29,7 +29,7 @@ mcp-radarr = "mcp_radarr.server:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-mcp_radarr = ["py.typed"]
+mcp_radarr = ["py.typed", "config.yaml"]
 
 [build-system]
 requires = ["setuptools>=61.0"]

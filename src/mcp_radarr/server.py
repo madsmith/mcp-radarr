@@ -2,7 +2,7 @@ import argparse
 import asyncio
 import json
 from typing import Any, Optional
-import omegaconf
+from omegaconf import OmegaConf
 from pydantic import BaseModel
 import aiohttp
 from fastmcp import FastMCP, Context
@@ -10,9 +10,8 @@ import importlib.metadata
 
 from .filters import filter_keys, filter_movie, filter_movie_minimal
 from .types import RadarrError, MovieDetailsFull, MovieDetails, MovieMinimal, QualityProfile
-from .config import load_config
+from .config import RadarrConfig
 
-config = load_config()
 
 version = importlib.metadata.version("mcp-radarr")
 
@@ -417,15 +416,23 @@ async def run_server(args):
     )
 
     # Load configuration details
-    config = load_config()
-    radarr_url = omegaconf.select(config, "radarr.url")
+    kwargs = {}
+    if args.radarr_url:
+        kwargs["url"] = args.radarr_url
+    if args.radarr_api_key:
+        kwargs["api_key"] = args.radarr_api_key
+    if args.config:
+        kwargs["config_path"] = args.config
+    print(kwargs)
+
+    config = RadarrConfig(**kwargs)
+    radarr_url = config.url
     if not radarr_url:
         raise RuntimeError("Radarr URL not set in config")
 
-    radarr_api_key = omegaconf.select(config, "radarr.api_key")
-    if not radarr_api_key or radarr_api_key == "changeme":
+    radarr_api_key = config.api_key
+    if not radarr_api_key:
         raise RuntimeError("Radarr API key not set in config")
-    
 
     api = RadarrAPI(radarr_url, radarr_api_key)
     tools = RadarrMCPTools(api)
@@ -455,8 +462,14 @@ def main():
         choices=["stdio", "sse", "http", "streamable-http"],
         default="stdio",
         help="Server transport mode (default: stdio)")
-    parser.add_argument("-p", "--port", type=int, default=8050, help="Port to run the server on (default: 8050)")
-    parser.add_argument("-H", "--host", default="0.0.0.0", help="Host to run the server on (default: 0.0.0.0)")
+    server_group = parser.add_argument_group("Server Mode Options")
+    server_group.add_argument("-p", "--port", type=int, default=8050, help="Port to run the server on (default: 8050)")
+    server_group.add_argument("-H", "--host", default="0.0.0.0", help="Host to run the server on (default: 0.0.0.0)")
+    config_group = parser.add_argument_group("Configuration")
+    config_group.add_argument("-c", "--config", default="config.yaml", help="Path to config file (default: config.yaml)")
+    config_group.add_argument("--radarr-url", help="Radarr URL (default: empty)")
+    config_group.add_argument("--radarr-api-key", help="Radarr API key (default: empty)")
+
     args = parser.parse_args()
 
     asyncio.run(run_server(args))
