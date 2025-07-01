@@ -131,7 +131,7 @@ class RadarrMCPTools:
         for movie in movies:
             if movie.get("title", "").lower() == title.lower():
                 filtered = filter_movie(movie, self.api)
-                return MovieDetails.model_validate(filtered)
+                return MovieDetails.fromDetailsFull(filtered)
         
         return None
 
