@@ -18,6 +18,8 @@ class RadarrConfig:
             self._config = OmegaConf.load(default_path)
             if config is not None:
                 self._config = OmegaConf.merge(config, self._config)
+        elif config is not None:
+            self._config = config
 
     @property
     def url(self):
