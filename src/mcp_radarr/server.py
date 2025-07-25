@@ -57,20 +57,21 @@ class RadarrMCPTools:
         Searches for movies by name or title using the Radarr API.
 
         This tool helps you find movies in external databases that can be added to Radarr.
-        It returns detailed information about matching movies that aren't necessarily in your Radarr library yet.
+        It returns detailed information about matching movies and whether they are already
+        in your Radarr library.
 
         Args:
             query (str): The movie name/title to search for. Can include year for better precision
                          (e.g., "Hackers", "The Matrix (1999)")
 
         Returns:
-            list[MovieDetailed]: List of matching movie objects with fields like:
+            list[MovieDetails]: List of matching movie objects with fields like:
                 - title: Movie title
                 - year: Release year
                 - tmdbId: The Movie Database ID (required for adding movies)
                 - overview: Plot summary
                 - images: Poster and backdrop URLs
-                - radarr_status: Information about movie status in Radarr
+                - radarr_status: Information about movie status in Radarr (downloaded, tracked, monitored)
                     
         Example use case: When a user wants to add a new movie to their Radarr watchlist
         """
@@ -135,7 +136,7 @@ class RadarrMCPTools:
         
         return None
 
-    async def movie_info_by_tmdb_id(self, tmdbId: int) -> Optional[MovieDetailsFull]:
+    async def movie_info_by_tmdb_id(self, tmdbId: int) -> Optional[MovieDetails]:
         """
         Retrieves detailed information about a specific movie in your Radarr library by TMDB ID.
 
@@ -147,7 +148,7 @@ class RadarrMCPTools:
                          (not the same as Radarr's internal ID)
 
         Returns:
-            Optional[MovieDetailed]: If successful, a MovieDetailed object with detailed information
+            Optional[MovieDetails]: If successful, a MovieDetails object with detailed information
                                    If not found, returns None
                     
         Example use case: When you need precise information about a movie without ambiguity,
@@ -156,7 +157,7 @@ class RadarrMCPTools:
         movies = await self.api.request("movie", params={"tmdbId": tmdbId})
         if not movies:
             return None
-        return filter_movie(movies[0], self.api)
+        return MovieDetails.fromDetailsFull(filter_movie(movies[0], self.api))
 
     async def get_quality_profiles(self) -> list[QualityProfile]:
         """
@@ -311,18 +312,35 @@ class RadarrMCPTools:
     async def search_for_movie(self, criteria: dict, includeFields: list = None) -> ToolResponse:
         """
         Search for movies matching given criteria.
-        Supported criteria keys:
-        - name: str (partial match, case-insensitive)
-        - qualityProfileId: int
-        - genres: list of str (any genre matches)
-        - certification: str [G, PG, PG-13, R, NC-17, etc.]
-        - year: int or dict with gt, lt, eq operators (e.g., {"gt": 2000, "lt": 2010})
-        - monitored: bool
-        - status: str [announced, released, inCinemas]
-        - movieFile.size: {"gt": int, "lt": int} (bytes)
-        Optionally, includeFields: list of additional field names to include in results.
-        Example:
-        {"name": "Matrix", "year": 1999, "genres": ["Action"]}, includeFields=["qualityProfileId", "genres"]
+
+        Args:
+            criteria (dict, required): Search criteria, a dict of key-value pairs where the
+                keys are the field names to search on and the values are the values to search for.
+                Supported criteria keys:
+                - name: str (partial match, case-insensitive)
+                - qualityProfileId: int
+                - genres: list of str (any genre matches)
+                - certification: str [G, PG, PG-13, R, NC-17, etc.]
+                - year: int or dict with gt, lt, eq operators (e.g., {"gt": 2000, "lt": 2010})
+                - monitored: bool
+                - status: str [announced, released, inCinemas]
+                - movieFile.size: {"gt": int, "lt": int} (bytes)
+            includeFields (list, optional): List of additional fields to include in results. Normally,
+                the fields ["id", "title", "year", "tmdbId"] are returned in the movie result.
+
+            Example:
+                search_for_movie(
+                    {"name": "Matrix", "year": 1999, "genres": ["Action"]},
+                    includeFields=["qualityProfileId", "genres"]
+                )
+            
+            Returns:
+                list[MovieDetails]: List of movie objects with essential fields like:
+                    - id: Movie ID in Radarr
+                    - title: Movie title
+                    - year: Release year
+                    - tmdbId: The Movie Database ID
+                    - ... any additional fields specified in includeFields
         """
         movies = await self.api.request("movie")
         results = []
@@ -414,7 +432,6 @@ async def run_server(args):
         kwargs["api_key"] = args.radarr_api_key
     if args.config:
         kwargs["config_path"] = args.config
-    print(kwargs)
 
     config = RadarrConfig(**kwargs)
     radarr_url = config.url
