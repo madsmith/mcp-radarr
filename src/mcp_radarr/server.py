@@ -461,7 +461,7 @@ async def run_server(args):
             "port": args.port,
         }
 
-    await server.run_async(transport, **transport_kwargs)
+    await server.run_async(transport, show_banner=False, **transport_kwargs)
 
 def main():
     parser = argparse.ArgumentParser(description="MCP server for Radarr integration")
